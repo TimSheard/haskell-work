@@ -7,6 +7,9 @@
 {-# LANGUAGE RecordWildCards        #-}
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE ConstraintKinds        #-}
+{-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 
 module Component2 where
 
@@ -17,6 +20,30 @@ import Data.Registry
 -- import Data.Typeable
 import Type.Reflection(TypeRep(..),typeOf)
 import Data.Type.Equality(testEquality)
+import Data.Constraint(Constraint,Dict(..),withDict)
+
+-- ======================================================
+-- The Name class associates a unique name to a type and
+-- to a unique Module with that type.
+
+class Name n t | n -> t where
+   open :: Nm n -> t
+   encap:: Nm n -> Module t
+   encap nm = Module nm (open nm)
+
+
+-- ======================================================
+-- The Reify class associates a unique name 'n' to a
+-- type 't', which can have an arbitrary class constraint 'c'
+-- This allows us to lift a class to piece of data which
+-- encodes the same information. There are two ways one might
+-- use this:
+-- 1) the data can be 'Dict' from Data.Constraint. (easy to do)
+-- 2) the data can be a record structure. (better for type inference)
+
+class Reify n c t | n -> c, n -> t where
+   reify :: c => Nm n -> t
+
 
 -- =============================================
 -- Component Names (Uninhabited Types)
@@ -56,15 +83,6 @@ deriving instance Show (Nm t)
 
 data Module t where
    Module:: Name n t => Nm n -> t -> Module t
-
--- ======================================================
--- The Name class associates a unique name to a type and
--- to a unique Module with that type.
-
-class Name n t | n -> t where
-   open :: Nm n -> t
-   encap:: Nm n -> Module t
-   encap nm = Module nm (open nm)
 
 -- ========================================
 -- What can be signed?
@@ -114,14 +132,14 @@ instance Name ShortHash (Crypto Word32 Word32 Word32) where
 
 -- We can 'open' a Crypto module and use its contents. The type shown can be infered
 
-foo:: (Name n (Crypto t t2 t1), Signable a) => Nm n -> a -> (Int, t2 -> t1)
+-- foo:: (Name n (Crypto t t2 t1), Signable a) => Nm n -> a -> (Int, t2 -> t1)
 foo mod y = (keysize + 18, sign y)
   where Crypto{..} = open mod
 
 -- ==================================
 -- Concrete Asset types
 
-newtype Coin = Coin Int
+newtype Coin = Coin Int deriving Show
 data Value = Value Coin (Map String Integer)
 
 -- ==================================
@@ -141,7 +159,7 @@ instance Name JustAda (Asset Coin) where
            }
 
 instance Name MultiAsset (Asset Value) where
-   open _ = Asset zero plus comment
+   open MultiAsset = Asset zero plus comment
       where zero = Value (Coin 0) Map.empty
             plus (Value (Coin x) xs) (Value (Coin y) ys) = Value (Coin (x+y)) (Map.unionWith (+) xs ys)
             comment = "Multi assets"
@@ -217,3 +235,65 @@ instance Show (Module t) where
 
 data Exists f where
   Hide:: TypeRep a -> f a -> Exists f
+
+-- =============================================
+
+class MAsset value where
+  mzero :: value
+  mplus :: value -> value -> value
+  mcomment :: forall proxy . proxy value -> String
+
+instance (MAsset Coin) where
+   mzero = Coin 0
+   mplus = \ (Coin x) (Coin y) -> Coin(x+y)
+   mcomment _ = "Coin assets"
+
+instance Reify Mock (MAsset Coin) (Asset Coin) where
+   reify Mock = Asset mzero mplus (mcomment ([]::[Coin]))
+
+instance Reify JustAda (MAsset Coin) (Dict (MAsset Coin)) where
+   reify JustAda = Dict
+
+
+
+-- bar :: (c, Reify n c (Asset value)) => Nm n -> value
+bar m = plus zero zero
+   where Asset{..} = reify m
+
+-- =============================================
+-- Example with Associated Type Classes
+
+class MultAsset t where
+   data Ass t :: *
+   nzero :: Ass t
+   nplus :: Ass t -> Ass t -> Ass t
+   ncomment :: Nm t -> String
+
+instance (MultAsset Shelley) where
+   newtype Ass Shelley = C Coin deriving Show
+   nzero = C (Coin 0)
+   nplus = \ (C (Coin x)) (C (Coin y)) -> C(Coin(x+y))
+   ncomment Shelley = "Coin assets"
+
+instance Reify Shelley (MultAsset Shelley) (Asset (Ass Shelley)) where
+   reify Shelley = Asset nzero nplus (ncomment Shelley)
+
+unC (C x) = x
+
+-- =============================================
+-- 2nd Example with Associated Type Classes using 'type' instead of 'data'
+
+class MultAsset2 t where
+   type Ass2 t :: *
+   nzero2 :: Nm t -> Ass2 t
+   nplus2 :: Nm t -> Ass2 t -> Ass2 t -> Ass2 t
+   ncomment2 :: Nm t -> String
+
+instance (MultAsset2 Goguen) where
+   type Ass2 Goguen = Coin
+   nzero2 Goguen = Coin 0
+   nplus2 Goguen (Coin x) (Coin y) = Coin(x+y)
+   ncomment2 Goguen = "Coin assets"
+
+instance Reify Goguen (MultAsset2 Goguen) (Asset Coin) where
+   reify Goguen = Asset (nzero2 Goguen) (nplus2 Goguen) (ncomment2 Goguen)
