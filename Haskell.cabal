@@ -22,14 +22,16 @@ executable Haskell
     MultiAsset
     Univ
     Literal
+    Reflect
 
   -- other-extensions:
 
   build-depends:       base,
     array,
-    constraint,
+    constraints,
     containers,
     mtl,
-    registry
+    registry,
+    reflection
 
   default-language:    Haskell2010

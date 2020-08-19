@@ -561,11 +561,45 @@ data Pat t where
 
 newtype Env = Env (Map String Val)
 
-decrement:: Int -> State Int t -> State Int (Maybe t)
-decrement n comp = do
-  m <- get
-  if m<n then pure Nothing
-         else do { put(m-n); t <- comp; pure(Just t)}
 
-eval :: Env -> Prog t -> State Int (Maybe t)
-eval env (ELit l) = decrement 1 (pure (evalLit l))
+eval :: Env -> Prog t -> Metered t
+eval env (ELit l) = (pure (evalLit l))  -- Constants cost nothing to evaluate
+eval env (EPrim name cost x) = decrement cost (pure x)
+eval env (EApp (EPrim name cost f) arg) =
+   do { v <- eval env arg ; decrement cost (pure (f v))}
+
+-- ==========================================================
+-- The Metering Monad
+
+data Result t = Ok t | TooCostly | NotOk String
+newtype Metered t = Metered { runMetered :: (Int -> (Int,Result t)) }
+
+instance Functor Result where
+   fmap f (Ok t) = Ok (f t)
+   fmap f TooCostly = TooCostly
+   fmap f (NotOk s) = NotOk s
+
+instance Functor Metered where
+   fmap f (Metered g) = Metered h
+      where h n = (m,fmap f r) where (m,r) = g n
+
+instance Applicative Metered where
+   pure x = Metered(\ n -> (n,Ok x))
+   g <*> y = do { f <- g; x <- y; pure(f x) }
+
+
+instance Monad Metered where
+   return x = pure x
+   (Metered f) >>= g = Metered h
+     where h n | n<=0 = (0,TooCostly)
+           h n = case f n of
+                  (m,Ok y) -> runMetered (g y) (m-1)
+                  (m,TooCostly) -> (0,TooCostly)
+                  (m,NotOk s) -> (m,NotOk s)
+
+decrement:: Int -> Metered t -> Metered t
+decrement n (Metered f) = Metered g
+   where g m = case f m of
+                (l,Ok y) | l > n -> (l-n,Ok y)
+                (l,Ok y) -> (0,TooCostly)
+                (l,ans) -> (l,ans)

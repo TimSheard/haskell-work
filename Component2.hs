@@ -10,6 +10,7 @@
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Component2 where
 
@@ -297,3 +298,46 @@ instance (MultAsset2 Goguen) where
 
 instance Reify Goguen (MultAsset2 Goguen) (Asset Coin) where
    reify Goguen = Asset (nzero2 Goguen) (nplus2 Goguen) (ncomment2 Goguen)
+
+
+-- ========================================================
+
+data ClassRep (c::Constraint) where
+  Show :: TypeRep t -> ClassRep (Show t)
+  MAsset :: MAsset t => TypeRep t -> ClassRep(MAsset t)
+
+instance Show (ClassRep c) where
+  show (Show x) = "Show "++show x
+  show (MAsset x) = "MAsset "++show x
+
+intrep:: TypeRep Int
+intrep = typeOf(7)
+
+coinrep:: TypeRep Coin
+coinrep = typeOf(undefined)
+
+
+
+shelley:: TypeRep Shelley
+shelley = typeOf(undefined)
+
+data Lib c where
+   Lib :: c => ClassRep(c) -> Lib c
+
+instance Show (Lib c) where
+  show (Lib classrep) = "Lib ("++show classrep++")"
+
+
+using :: forall c a. Lib c -> (c => a) -> a
+using (Lib y) x = x
+{-
+class Reify2 c where
+   using :: Lib c -> (c => a) -> a
+
+
+instance Reify2 (MAsset Coin) where
+   using (Lib (MAsset coinrep)) x = x
+-}
+
+-- baz:: TypeRep c -> c
+baz c = using (Lib (MAsset c)) (mplus mzero mzero)
