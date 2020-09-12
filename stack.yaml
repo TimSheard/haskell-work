@@ -17,7 +17,11 @@
 #
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
-resolver: lts-16.8
+
+# resolver: lts-16.13
+
+resolver: https://raw.githubusercontent.com/input-output-hk/cardano-prelude/0c5b0a6619fadf22f4d62a12154e181a6d035c1c/snapshot.yaml
+
 # User packages to be built.
 # Various formats can be used as shown in the example below.
 #
@@ -39,8 +43,19 @@ packages:
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
 #
 extra-deps:
-  - git: https://github.com/etorreborre/registry.git
-    commit: e380040eb4589f92ee39b3e980e73b747d9f51c1
+#  - git: https://github.com/etorreborre/registry.git
+#    commit: e380040eb4589f92ee39b3e980e73b747d9f51c1
+
+  - git: https://github.com/input-output-hk/cardano-base
+    subdirs:
+    - binary
+    commit: 13f44ad35d2762dbf98b3d3be56b7ba2adf515f4
+
+  - git: https://github.com/input-output-hk/cardano-prelude
+    commit: 0c5b0a6619fadf22f4d62a12154e181a6d035c1c
+    subdirs:
+      - .
+      - test
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

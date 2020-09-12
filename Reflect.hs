@@ -117,6 +117,11 @@ instance Reifies s (Def Monoid a) => Monoid (Lift Monoid a s) where
 monoidProxy :: Proxy Monoid
 monoidProxy = Proxy
 
+{-
+instance HasDict (Monoid x) (Def Monoid x) where
+  evidence (Monoid _ _) = Dict
+-}
+
 -- ==========================================
 -- My additions and experiments
 
@@ -139,3 +144,41 @@ $(modularize 'Foo)
 
 main :: IO ()
 main = return ()
+
+
+newtype Magic a r = Magic (forall (s :: *). Reifies s a => Proxy s -> r)
+
+w :: Num n => n -> n
+w = (\ n -> n + 3)
+
+newtype Magic2 c a r = Magic2 (c a => r)
+
+ex3 :: Magic2 Num n (n -> n)
+ex3 = Magic2 w
+
+
+data Tx c v = Tx
+data Delta c v = Delta Int deriving Eq
+
+data Gen x = Gen x
+instance Functor Gen
+instance Applicative Gen
+instance Monad Gen
+
+
+genNextDelta :: Tx c v -> Delta c v -> Gen (Delta c v)
+genNextDelta tx delta = undefined
+
+getDelta :: Tx c v -> Gen (Delta c v)
+getDelta tx = fix (genNextDelta tx) (Delta 0)
+
+applyDelta :: Tx c v -> Delta c v -> Tx c v
+applyDelta tx delta = undefined
+
+fix :: (Eq d,Monad m) => (d ->  m d) -> d -> m d
+fix f d = do { d1 <- f d; if d1==d then pure d else fix f d1 }
+
+converge :: Tx c v -> Gen (Tx c v)
+converge tx = do
+  delta <- getDelta tx
+  pure(applyDelta tx delta)

@@ -23,6 +23,9 @@ executable Haskell
     Univ
     Literal
     Reflect
+    EqualityProofs
+    Classes
+    LazyEncoding
 
   -- other-extensions:
 
@@ -32,6 +35,11 @@ executable Haskell
     containers,
     mtl,
     registry,
-    reflection
+    reflection,
+    base,
+    cborg,
+    cardano-binary,
+    bytestring,
+    text
 
   default-language:    Haskell2010
