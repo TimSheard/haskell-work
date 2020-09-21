@@ -7,7 +7,11 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances   #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving  #-}
 
-module LazyEncoding where
+module LazyEncoding
+   ( Foo(..,Foo),
+     Lazy(..),
+     FooFlat(..),
+   ) where
 
 import Control.Monad (unless)
 
@@ -25,6 +29,7 @@ import Codec.CBOR.Read( deserialiseFromBytes )
 import Cardano.Binary
    ( ToCBOR(toCBOR), FromCBOR(fromCBOR), encodeListLen,
      decodeBreakOr, decodeListLenOrIndef,  matchSize,
+     Annotated(..), fromCBORAnnotated, reAnnotate, serialize',
    )
 
 -- fromCBOR :: FromCBOR a => Decoder s a
@@ -48,38 +53,40 @@ source = fromString "abc23"
 -- ===========================================================
 -- Intoduce a normal type, and make CBOR instances for it
 
-data Foo e = Foo Integer Text
+data FooFlat = FooFlat Integer Text
+  deriving (Show,Typeable)
 
-instance Typeable e => ToCBOR (Foo e) where
-  toCBOR (Foo n s) = encodeListLen 2 <> toCBOR n <> toCBOR s
+instance ToCBOR FooFlat where
+  toCBOR (FooFlat n s) = encodeListLen 2 <> toCBOR n <> toCBOR s
 
-instance Typeable e => FromCBOR (Foo e) where
+instance FromCBOR FooFlat where
   fromCBOR = decodeRecordNamed (fromString "Foo") (const 2) $ do
      n <- fromCBOR
      s <- fromCBOR
-     pure $ Foo n s
+     pure $ FooFlat n s
+
+pattern Foo x y <- FooLazy (Lazy _ (FooFlat x y)) where
+  Foo x y =  FooLazy (Lazy (serialize' t) t) where t = FooFlat x y
+
+newtype Foo = FooLazy (Lazy FooFlat)
+  deriving (ToCBOR,FromCBOR)
+
 
 -- ===========================================================
 -- We can wrap any indexed type in a Lazy, And we need only
 -- one instance each for ToCBOR and FromCBOR of Lazy
 
-data Lazy f e = Lazy ByteString (f e)
+data Lazy f = Lazy ByteString f
+  deriving Show
 
-instance (Typeable f,Typeable e) => ToCBOR (Lazy f e) where
+instance (Typeable f) => ToCBOR (Lazy f) where
   toCBOR (Lazy bytes f) = encodePreEncoded bytes
 
-instance (Typeable f,Typeable e,ToCBOR (f e),FromCBOR(f e)) => FromCBOR (Lazy f e) where
+instance (Typeable f,ToCBOR f,FromCBOR f) => FromCBOR (Lazy f) where
   fromCBOR = do
-     fe <- fromCBOR
-     let encoding = toCBOR fe                  -- we do this just once at construction time
-         bytes = toStrictByteString encoding
+     (Annotated fe bytes) <- fmap reAnnotate fromCBORAnnotated
      pure (Lazy bytes fe)
 
--- ========================================================
--- Wrap anything in a newtype can be derived automatically
-
-newtype Bar e = Bar (Lazy Foo e)
-  deriving (ToCBOR,FromCBOR)
 
 -- =========================================================================
 
