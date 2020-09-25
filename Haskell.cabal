@@ -18,6 +18,7 @@ executable Haskell
     Main.hs
   other-modules:
     Component2
+    Component3
     Script
     MultiAsset
     Univ
