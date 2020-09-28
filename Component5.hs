@@ -108,35 +108,39 @@ instance ChooseV MultiAsset Value   where vrep = MultiAssetR
 -- ==================================
 -- Dimension Transactions
 
-data Tx = Normal | Forging  deriving Show  -- Range of variation
+data Tx = Normal | Forging  | Plutus deriving Show  -- Range of variation
 
 data TxRep (a:: Tx)  v where
   NormalR :: TxRep 'Normal Bool
   ForgingR :: TxRep 'Forging [Int]
+  PlutusR :: Era e => TxRep 'Plutus (TxT e)   -- Here I don't know what this is in the current scope
+                                              -- The idea is that in the scope where I make the Era instance,
+                                              -- I can also make the ChooseT instance.
 
 deriving instance Show (TxRep t v)
 
 class ChooseT (c::Tx) t | c -> t where trep:: TxRep c t
 instance ChooseT Normal Bool     where trep = NormalR
 instance ChooseT Forging [Int]   where trep = ForgingR
+-- instance ChooseT Plutus <to be defined>        where trep = PlutusR
 
 -- =========================================
 -- Dimension Crypto Alg
 
-data Crypt = Mock | Concrete | Kes deriving Show
+data Crypt = Mock | Concrete | Kes | New deriving Show
 
 data CryptRep (a:: Crypt) v  where         -- Range of variation
   MockR :: CryptRep 'Mock M
   ConcreteR :: CryptRep 'Concrete C
   KesR :: CryptRep 'Kes K
 
+
 deriving instance Show (CryptRep t v)
 
-class ChooseC (c::Crypt) t | c -> t where crep:: CryptRep c t
+class ChooseC (c::Crypt) t | t -> c where crep:: CryptRep c t
 instance ChooseC Concrete C where crep = ConcreteR
 instance ChooseC Mock M     where crep = MockR
 instance ChooseC Kes K      where crep = KesR
-
 
 -- ================================================================
 -- An Era assembles a type in each dimension of variation
@@ -172,7 +176,7 @@ class ( ChooseC (CryptIndex e) (CryptT e),  -- Legal points
 
 
 -- ========================================================================
--- Now an instance. Just choose legal points in each dimensions range
+-- Now some instances. Just choose legal points in each dimensions range
 
 data G
 
@@ -185,6 +189,20 @@ instance Era G where
   type TxIndex G = Normal
 
 
+-- Illustrate we can add new type inscope away from where Era is defined
+
+data PTx = PTx Int Bool [Int] deriving Show
+instance ChooseT Plutus PTx where trep = PlutusR
+
+data H
+
+instance Era H where
+  type CryptT H = M
+  type CryptIndex H = Mock
+  type TokenT H = Value
+  type TokenIndex H = MultiAsset
+  type TxT H = PTx
+  type TxIndex H = Plutus
 
 -- ==============================================
 -- Now some example programs
