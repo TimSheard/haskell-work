@@ -19,6 +19,7 @@ executable Haskell
   other-modules:
     Component2
     Component3
+    Component5
     Script
     MultiAsset
     Univ

@@ -105,6 +105,9 @@ class ChooseV (c::Token) t | c -> t where vrep:: TokenRep c t
 instance ChooseV Ada Coin           where vrep = AdaR
 instance ChooseV MultiAsset Value   where vrep = MultiAssetR
 
+-- data TxBody e = TxBody { input:: TxIn e, out :: TxOut e, forge:: TokenT e}
+
+
 -- ==================================
 -- Dimension Transactions
 
@@ -116,6 +119,8 @@ data TxRep (a:: Tx)  v where
   PlutusR :: Era e => TxRep 'Plutus (TxT e)   -- Here I don't know what this is in the current scope
                                               -- The idea is that in the scope where I make the Era instance,
                                               -- I can also make the ChooseT instance.
+                                              -- I can do his once, in another file where more stuff is in scope
+                                              -- Avoids the mutua import problem
 
 deriving instance Show (TxRep t v)
 
@@ -153,7 +158,8 @@ class ( ChooseC (CryptIndex e) (CryptT e),  -- Legal points
         ChooseV (TokenIndex e) (TokenT e),
         Val (TokenT e),                     -- Meet requirements
         Crypto (CryptT e),
-        Show (TxT e)
+        Show (TxT e),
+        Constr e (TxT e)
       ) =>
 
   Era (e::Type) where                       -- Class magic to make things automatic
@@ -162,6 +168,8 @@ class ( ChooseC (CryptIndex e) (CryptT e),  -- Legal points
   type CryptIndex e = (t::Crypt) | t -> e
   cryptRep :: CryptRep (CryptIndex e) (CryptT e)
   cryptRep = crep @(CryptIndex e)
+
+  type Constr e = (t :: Type -> Constraint) | t -> e -- Another way to avoid the mutual import problem
 
   type TokenT e = t | t -> e
   type TokenIndex e = (t::Token) | t -> e
@@ -187,11 +195,12 @@ instance Era G where
   type TokenIndex G = Ada
   type TxT G = Bool
   type TxIndex G = Normal
+  type Constr G = Show
 
 
 -- Illustrate we can add new type inscope away from where Era is defined
 
-data PTx = PTx Int Bool [Int] deriving Show
+data PTx = PTx Int Bool [Int] deriving (Show,Ord,Eq)
 instance ChooseT Plutus PTx where trep = PlutusR
 
 data H
@@ -203,6 +212,10 @@ instance Era H where
   type TokenIndex H = MultiAsset
   type TxT H = PTx
   type TxIndex H = Plutus
+  type Constr H = Always
+
+class Always t where
+instance Always t where
 
 -- ==============================================
 -- Now some example programs
@@ -222,11 +235,73 @@ test62 t = case (tokenRep @e, t) of
             (MultiAssetR, Value (Coin n) _) -> n+3
 
 
-generalizeToken :: forall e a. Era e => (forall rep. Era e => TokenRep rep (TokenT e) -> a) -> a
+generalizeToken :: forall e a . (Era e) => (forall rep. TokenRep rep (TokenT e) -> a) -> a
 generalizeToken f = f (tokenRep @e)
 
-generalizeCrypt :: forall e a. Era e => (forall rep. Era e => CryptRep rep (CryptT e) -> a) -> a
+
+generalizeCrypt :: forall e a. Era e => (forall rep. CryptRep rep (CryptT e) -> a) -> a
 generalizeCrypt f = f (cryptRep @e)
 
-generalizeTx :: forall e a. Era e => (forall rep. Era e => TxRep rep (TxT e) -> a) -> a
+generalizeTx :: forall e a. Era e => (forall rep. TxRep rep (TxT e) -> a) -> a
 generalizeTx f = f (txRep @e)
+
+-- ==============================================
+-- Chained examples
+
+
+class ( ChooseC (CryptI e) (CryptType e),
+        Crypto (CryptT e)
+      ) =>
+
+  CryptoEra (e::Type) where
+
+  type CryptType e = t | t -> e
+  type CryptI e = (t::Crypt) | t -> e
+  cryptR :: CryptRep (CryptI e) (CryptType e)
+  cryptR = crep @(CryptI e)
+
+-- ===============
+
+class ( ChooseV (TokenI e) (TokenType e),
+        Val (TokenT e)
+      ) =>
+
+  TokenEra (e::Type) where
+
+  type TokenType e = t | t -> e
+  type TokenI e = (t::Token) | t -> e
+  tokenR :: TokenRep (TokenI e) (TokenType e)
+  tokenR = vrep @(TokenI e)
+
+
+-- ======================================
+
+class ( ChooseT (TxI e) (TxType e),
+        Show (TxType e),
+        Constr e (TxType e)
+      ) =>
+
+  TxEra (e::Type) where
+
+  type Constrain e = (t :: Type -> Constraint) | t -> e
+  type TxType e = t | t -> e
+  type TxI e = (t::Tx) | t -> e
+  txR :: TxRep (TxI e) (TxType e)
+  txR = trep @(TxI e)
+
+
+-- Nested instances
+
+
+instance CryptoEra H where
+  type CryptType H = M
+  type CryptI H = Mock
+
+instance CryptoEra H => TokenEra H where
+  type TokenType H = Value
+  type TokenI H = MultiAsset
+
+instance TxEra H => TxEra H where
+  type TxType H = PTx
+  type TxI H = Plutus
+  type Constrain H = Always
