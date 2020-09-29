@@ -245,12 +245,13 @@ generalizeCrypt f = f (cryptRep @e)
 generalizeTx :: forall e a. Era e => (forall rep. TxRep rep (TxT e) -> a) -> a
 generalizeTx f = f (txRep @e)
 
--- ==============================================
--- Chained examples
+-- ===============================================================
+-- Independant, but nestable classes with Chained examples
+-- ===============================================================
 
 
 class ( ChooseC (CryptI e) (CryptType e),
-        Crypto (CryptT e)
+        Crypto (CryptType e)
       ) =>
 
   CryptoEra (e::Type) where
@@ -263,7 +264,7 @@ class ( ChooseC (CryptI e) (CryptType e),
 -- ===============
 
 class ( ChooseV (TokenI e) (TokenType e),
-        Val (TokenT e)
+        Val (TokenType e)
       ) =>
 
   TokenEra (e::Type) where
@@ -289,9 +290,7 @@ class ( ChooseT (TxI e) (TxType e),
   txR :: TxRep (TxI e) (TxType e)
   txR = trep @(TxI e)
 
-
 -- Nested instances
-
 
 instance CryptoEra H where
   type CryptType H = M
@@ -301,7 +300,21 @@ instance CryptoEra H => TokenEra H where
   type TokenType H = Value
   type TokenI H = MultiAsset
 
-instance TxEra H => TxEra H where
+instance TokenEra H => TxEra H where
   type TxType H = PTx
   type TxI H = Plutus
   type Constrain H = Always
+
+
+test60b :: TokenEra e => TokenType e -> TokenType e
+test60b v = plus v v
+
+{- -- This doesn't type since CryptoEra does not have enough constraints
+test60c :: CryptoEra e => TokenType e -> TokenType e
+test60c v = plus v v
+-}
+
+
+test61b :: TokenEra e => TokenRep rep (TokenType e) -> TokenType e -> Int
+test61b AdaR (Coin 5) = 1
+test61b MultiAssetR (Value (Coin n) _) = n+3
