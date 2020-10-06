@@ -20,6 +20,7 @@ executable Haskell
     Component2
     Component3
     Component5
+    Component6
     Script
     MultiAsset
     Univ
@@ -28,6 +29,7 @@ executable Haskell
     EqualityProofs
     Classes
     LazyEncoding
+    BiMap
 
   -- other-extensions:
 
