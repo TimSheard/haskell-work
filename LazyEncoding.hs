@@ -6,6 +6,8 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances   #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving  #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module LazyEncoding
    ( Foo(..,Foo),
@@ -13,9 +15,12 @@ module LazyEncoding
      FooFlat(..),
    ) where
 
+import Prelude hiding (span)
 import Control.Monad (unless)
 
 import Data.ByteString(ByteString)
+import Data.ByteString.Short(ShortByteString, fromShort, toShort)
+import Data.ByteString.Lazy(toStrict)
 import Data.String(fromString)
 import Data.Text
 import Data.Typeable
@@ -29,8 +34,9 @@ import Codec.CBOR.Read( deserialiseFromBytes )
 import Cardano.Binary
    ( ToCBOR(toCBOR), FromCBOR(fromCBOR), encodeListLen,
      decodeBreakOr, decodeListLenOrIndef,  matchSize,
-     Annotated(..), fromCBORAnnotated, reAnnotate, serialize',
+     Annotated(..), fromCBORAnnotated, reAnnotate, serialize', Annotator(..),slice, FullByteString(..), annotatedDecoder,ByteSpan
    )
+
 
 -- fromCBOR :: FromCBOR a => Decoder s a
 -- toCBOR ∷ ToCBOR a => a → Encoding
@@ -87,6 +93,29 @@ instance (Typeable f,ToCBOR f,FromCBOR f) => FromCBOR (Lazy f) where
      (Annotated fe bytes) <- fmap reAnnotate fromCBORAnnotated
      pure (Lazy bytes fe)
 
+
+-- ========================================================================
+
+data MemoBytes t = Memo !t
+                        {-# UNPACK #-} !ShortByteString
+
+instance (Typeable t) => ToCBOR (MemoBytes t) where
+  toCBOR (Memo t bytes) = encodePreEncoded (fromShort bytes)
+
+instance (Typeable t, FromCBOR (Annotator t)) => FromCBOR (Annotator (MemoBytes t)) where
+  fromCBOR = do
+     (Annotated (Annotator getT) span) <- fromCBORAnnotated
+     pure (Annotator (\ fullbytes -> Memo (getT fullbytes) (extractShort fullbytes span)))
+
+instance Eq t => Eq (MemoBytes t) where (Memo x _) == (Memo y _) = x==y
+
+instance Show t => Show (MemoBytes t) where show (Memo y _) = show y
+
+instance Ord t => Ord (MemoBytes t) where compare (Memo x _) (Memo y _) = compare x y
+
+
+extractShort:: FullByteString -> ByteSpan -> ShortByteString
+extractShort (Full lazybytes) span = toShort(toStrict(slice lazybytes span))
 
 -- =========================================================================
 

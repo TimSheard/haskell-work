@@ -17,6 +17,8 @@ import Data.Set(Set)
 import Unsafe.Coerce
 import Control.Monad.State(State,runState,get,put,modify)
 
+data Fix f = In (f (Fix f))
+
 -- =====================================================================================
 -- The Rep type itself, Any type: t, such that (Rep t) is inhabited is in the Universe.
 -- =====================================================================================
@@ -37,6 +39,7 @@ data Rep:: * -> * where
  Map:: Ord key => Rep key -> Rep val -> Rep(Map key val)
  Maybe:: Rep a -> Rep (Maybe a)
  Arrow:: Rep a -> Rep b -> Rep (a -> b)
+ Either:: Rep a -> Rep b -> Rep (Either a b)
  Tuple:: Tup nest flat => List1 Rep nest -> Rep flat
  Rep:: Rep a -> Rep(Rep a)
  Prog:: Rep t -> Rep(Prog t)
@@ -65,6 +68,7 @@ data Val where
    VMap:: Ord i => Rep i -> Rep t -> Map i t -> Val
    VMaybe:: Rep a -> Maybe a -> Val
    VArrow:: Rep a -> Rep b -> (a -> b) -> Val
+   VEither:: Rep a -> Rep b -> (Either a b) -> Val
    VTuple:: Tup nest flat => Rep flat -> flat -> nest -> Val
    NTuple:: [Val] -> Val
    VRep:: Rep a -> Val
@@ -202,6 +206,15 @@ instance (Univ a,Univ b) => Univ (a -> b) where
     fromVal _ _ = Nothing
     rep =  Arrow rep rep
     showU f = showR rep f
+
+instance (Univ a, Univ b) => Univ(Either a b) where
+   toVal e = VEither rep rep e
+   fromVal (Either a b) (VEither m n e) = do { Refl <- testEq a m; Refl <- testEq b n; Just e}
+   fromVal (Either a b) (VConstant _ (Either m n) e) = do { Refl <- testEq a m; Refl <- testEq b n; Just e}
+   fromVal _ _ = Nothing
+   rep = Either rep rep
+   showU (Left x) = "(Left "++showU x++")"
+   showU (Right x) = "(Right "++showU x++")"
 
 instance Univ t => Univ (Rep t) where
    toVal x = VRep x
