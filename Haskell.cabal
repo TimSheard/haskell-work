@@ -30,6 +30,7 @@ executable Haskell
     Classes
     LazyEncoding
     BiMap
+    Flags
 
   -- other-extensions:
 
