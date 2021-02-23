@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleInstances  #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE RankNTypes #-}
 
 module IncrementalMap where
 
@@ -420,9 +421,44 @@ show10 m n dm dn = unlines
   ]
 
 
+-- =======================================================
+-- Tools for exploring unary derivatives on Maps
+
+-- | fix the function, its name, its derivative, and its name
+data UnaryFuns b a k = UF (Map k a -> Map k b) String (Map k a -> Delta k a -> Delta k b) String
+
+-- | Create an explanation of the law of derivatives,
+--   Can be used in proposistions with 'counterexample' or in function 'explain'
+showunary :: forall v1 v2 k. (Show k, Show v1, Show v2, Ord k, Eq v2) =>
+     (UnaryFuns v2 v1 k) -> Map k v1 -> Delta k v1 -> String
+showunary (UF f fname d dname) m dm = unlines
+  ["m = "++show m
+  ,"dm = "++show dm
+  ,"plusMap m dm = "++show(plusMap m dm)
+  ,fname++ " (plusMap m dm) = "++show(f (plusMap m dm) )
+  ,"NEED "++show(f m)++"  =>  "++show(f (plusMap m dm))
+  ,dname++" m dm = "++show(d m dm)
+  ,show(f (plusMap m dm) == plusMap (f m) (d m dm))
+  ]
+
+
+explain :: forall b. (Eq b,Show b) => UnaryFuns b Int Int -> IO()
+explain funs = putStrLn (showunary funs m dm)
+  where
+    m:: Map Int Int
+    dm:: Delta Int Int
+    m = fromList[(2,7)]
+    dm = (delta[(2,Edit 0)])
+
+isderivativeProp :: (Show k, Show v1, Show v2, Ord k, Eq v2) =>
+     UnaryFuns v2 v1 k -> Map k v1 -> Delta k v1 -> Property
+isderivativeProp (funs@(UF f _ f' _)) m dm
+   = counterexample (showunary funs m dm) $ f (plusMap m dm) === plusMap (f m) (f' m dm)
+
+
 -- ========================================
 
--- filter' :: forall k v. (Show v,Show k,Ord k) => (v -> Bool) -> Map k v -> Delta k v -> Delta k v
+filter' :: Ord k => (v -> Bool) -> Map k v -> Delta k v -> Delta k v
 filter' p m (Delta dm) = Delta (Map.foldlWithKey' accum Map.empty dm)
   where accum ans k v =
           case (v,Map.lookup k m) of
@@ -435,34 +471,69 @@ filter' p m (Delta dm) = Delta (Map.foldlWithKey' accum Map.empty dm)
             (Omit,Just v2) -> Map.insert k Omit ans
             (Omit,Nothing) -> ans
 
-prop11 :: (Show k, Show v, Ord k, Eq v) =>
-       (v -> Bool) -> Map k v -> Delta k v -> Property
-prop11 p m dm = counterexample (show11 p m dm) $
-                Map.filter p (plusMap m dm) ===
-                plusMap (Map.filter p m) (filter' p m dm)
+-- | a UnaryFuns for Map.filter
+ff p = UF (Map.filter p) "filter p" (filter' p) "filter' p"
 
-show11 :: (Show k, Show v, Ord k,Eq v) =>
-          (v -> Bool) -> Map k v -> Delta k v -> String
-show11 p m dm = unlines
-  ["m = "++show m
-  ,"dm = "++show dm
-  ,"plusMap m dm = "++show(plusMap m dm)
-  ,"Map.filter p (plusMap m dm) = "++show(Map.filter p (plusMap m dm) )
-  ,"NEED "++show(Map.filter p m)++"  =>  "++show(Map.filter p (plusMap m dm))
-  ,"filter' p m dm = "++show(filter' p m dm)
-  ,show(Map.filter p (plusMap m dm) == plusMap (Map.filter p m) (filter' p m dm))
-  ]
+-- | filter' is the derivative of Map.filter
+prop11 :: forall k v .
+ (Show k, Show v, Ord k, Eq v) =>
+ (v -> Bool) -> Map k v -> Delta k v -> Property
+prop11 p = isderivativeProp (ff p)
 
-fix11 = putStrLn (show11 even m dm) where
-    m:: Map Int Int
-    dm:: Delta Int Int
-    m = fromList[(2,7)]
-    dm = (delta[(2,Edit 0)])
-
+-- | explore what goes wrong
+fix11 p = explain (ff p)
 
 go11 :: IO ()
 go11 = defaultMain (testProperty "filter'" (prop11 @Int @Int even))
 
+-- =======================================================
+
+map' :: Ord k => (k -> a -> b) -> Map k a -> Delta k a -> Delta k b
+map' p m (Delta dm) = Delta (Map.foldlWithKey' accum Map.empty dm)
+  where accum ans k v =
+          case (v,Map.lookup k m) of
+            (Add v1,Just v2) -> ans
+            (Add v1,Nothing) -> Map.insert k (Add (p k v1)) ans
+            (Edit v1,Just v2) -> Map.insert k (Edit (p k v1)) ans
+            (Edit v1,Nothing) -> ans
+            (Omit,Just v2) -> Map.insert k Omit ans
+            (Omit,Nothing) -> ans
+
+-- | a UnaryFuns for Map.mapWithKey
+mapfuns p = UF (Map.mapWithKey p) "mapWithkey p" (map' p) "map' p"
+
+prop12 :: forall k v v2.
+ (Show k, Show v, Ord k, Eq v, Show v2, Eq v2) =>
+ (k -> v -> v2) -> Map k v -> Delta k v -> Property
+prop12 p = isderivativeProp (mapfuns p)
+
+
+fix12 = putStrLn (showunary (mapfuns (\ k v -> v+1)) m dm)
+  where
+    m:: Map Int Int
+    dm:: Delta Int Int
+    m = fromList [(2,2)]
+    dm = (delta[(2,Omit)])
+
+go12 :: IO ()
+go12 = defaultMain (testProperty "mapWithKey'" (prop12 @Int @Int @String (\ k v -> show k)))
+
+-- ====================================================
+
+lookup' :: Ord k => k -> Map k a -> Delta k a -> Delta k a
+lookup' key m (Delta dm) = Delta (Map.foldlWithKey' accum Map.empty dm)
+  where accum ans k v =
+          case (v,Map.lookup k m) of
+            (Add v1,Just v2) -> ans
+            (Add v1,Nothing) ->  ans
+            (Edit v1,Just v2) -> ans
+            (Edit v1,Nothing) -> ans
+            (Omit,Just v2) -> ans
+            (Omit,Nothing) -> ans
+
+{-
+-- lookupfuns key = UF (Map.lookup key) "Map.lookup" (lookup' key) "lookup'"
+-}
 -- ========================================
 tests :: TestTree
 tests = testGroup "incremental calculus tests"
@@ -483,6 +554,11 @@ tests = testGroup "incremental calculus tests"
         , testProperty "unionPrime (\\ x y -> y <> x) is derivative" (unionPlus @Int @[Int] (\ x y -> y <> x) )
         , testProperty "intersect' is derivative" (prop10 @Int @Int @Int)
         , testProperty "(filter' even) is derivative" (prop11 @Int @Int even)
+        , testProperty "(filter' (const True)) is derivative" (prop11 @Int @Int (const True))
+        , testProperty "(filter' (const False)) is derivative" (prop11 @Int @Int (const False))
+        , testProperty "(mapWithKey' (\\ k v -> show v) is derivative" (prop12 @Int @Int @String (\ k v -> show k))
+        , testProperty "(mapWithKey' (\\ k v -> v+9) is derivative" (prop12 @Int @Int @Int (\ k v -> v+9))
+        , testProperty "(mapWithKey' (\\ k v -> k==v) is derivative" (prop12 @Int @Int @Bool (\ k v -> k==v))
         ]
     ]
 
