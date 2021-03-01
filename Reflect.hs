@@ -12,6 +12,7 @@ import Data.Reflection
 import Data.Constraint
 import Data.Constraint.Unsafe
 import Data.Typeable
+import Data.Semigroup
 
 --------------------------------------------------------------------------------
 -- Lift/ReifiableConstraint machinery.

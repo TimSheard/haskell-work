@@ -1,4 +1,4 @@
-# Revision history for Haskell
+# Revision history for haskell-work
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

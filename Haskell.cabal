@@ -17,33 +17,35 @@ executable Haskell
   main-is:
     Main.hs
   other-modules:
-    Component2
-    Component3
-    Component5
-    Component6
+    -- Component2
+    -- Component3
+    -- Component5
+    -- Component6
     Script
-    MultiAsset
+    -- MultiAsset
     Univ
     Literal
-    Reflect
+    -- Reflect
     EqualityProofs
     Classes
-    LazyEncoding
+    -- LazyEncoding
     BiMap
     Flags
+    Compact
 
   -- other-extensions:
 
-  build-depends:       base,
+  build-depends:
+    base,
     array,
     constraints,
     containers,
     mtl,
-    registry,
+    -- registry,
     reflection,
     base,
     cborg,
-    cardano-binary,
+    -- cardano-binary,
     bytestring,
     text
 
