@@ -12,6 +12,10 @@ module MapRecord where
 import Data.Kind
 import qualified Data.Map as Map
 import qualified Data.List as List
+import Cardano.Binary(ToCBOR(..),FromCBOR(..))
+import Data.Typeable(Typeable)
+
+-- ================================================
 
 class Key (key :: Type -> Type) where
    rank :: key t -> Int
@@ -21,6 +25,7 @@ class Key (key :: Type -> Type) where
 class Key key => Haskey field (key :: Type -> Type) | field -> key where
    match :: key t -> field -> Maybe t
    make :: key t -> t -> field
+   makeUpdate :: field -> Update key
 
 data Update (t :: Type -> Type) where
   Update :: t x -> x -> Update t
@@ -42,8 +47,14 @@ get k (Record m) = case Map.lookup (Some k) m of
 put :: Haskey field key => Record key field -> key i -> i -> Record key field
 put (Record m) key v = Record(Map.insert (Some key) (make key v) m)
 
+putUpdate :: Haskey field key => Record key field -> Update key -> Record key field
+putUpdate rec (Update key i) = put rec key i
+
+putField :: Haskey field key => Record key field -> field -> Record key field
+putField rec f = putUpdate rec (makeUpdate f)
+
 applyUpdates :: Haskey field key => Record key field -> [Update key] -> Record key field
-applyUpdates record xs = List.foldl' (\ r (Update k v) -> put r k v) record xs
+applyUpdates record xs = List.foldl' putUpdate record xs
 
 initialRecord = Record (Map.empty)
 
@@ -61,10 +72,21 @@ instance Key k => Show(Some k) where
 instance (Key k, Show field) => Show (Record k field) where
   show (Record m) = show m
 
--- ========================================================
--- A simple example, isomorphic to: data Record = Record {a :: Int, b :: String, c :: Bool}
+instance (Typeable key, ToCBOR field) => ToCBOR (Record key field) where
+  toCBOR (Record m) = toCBOR (Map.elems m)
 
--- We need a pair of types
+instance (Typeable key, Haskey field key, FromCBOR field) => FromCBOR (Record key field) where
+  fromCBOR = lift <$> fromCBOR
+     where lift :: [field] -> Record key field
+           lift xs = applyUpdates initialRecord (map makeUpdate xs)
+
+-- ========================================================
+-- A simple example, isomorphic to:
+-- data Record = Record {a :: Int, b :: String, c :: Bool}
+-- Instead we define (HasKey Field Label) and (Key Label) instances and then
+-- We get he type (Record Field Label) type for free, with a full set of operations.
+
+-- We need a pair of types Field and Label
 
 data Field = A Int | B String | C Bool
   deriving Show
@@ -74,7 +96,8 @@ data Label t where
   B' :: Label String
   C' :: Label Bool
 
--- We need 5 simple functions to fill in the Key and Haskey constraints
+-- We need 6 simple functions to fill in the Key and Haskey constraints
+-- All but 'initial' could be derived Generically
 
 instance Key Label where
   rank A' = 0
@@ -95,3 +118,6 @@ instance Haskey Field Label where
   make A' n = A n
   make B' n = B n
   make C' n = C n
+  makeUpdate (A x) = Update A' x
+  makeUpdate (B x) = Update B' x
+  makeUpdate (C x) = Update C' x
